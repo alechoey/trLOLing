@@ -1,2 +1,5 @@
 # Ignore raw data
 /data/raw
+
+# Ignore processed data for now too
+/data/processed
