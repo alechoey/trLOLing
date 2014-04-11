@@ -1,23 +1,17 @@
-require 'time'
+require_relative './file_factory/time_stamped_file_factory'
 
 # Write timestamped files for data in the same directory
 
 class RawOutputter
-  def initialize(directory, filename='', extension='')
-    @directory = directory
-    @filename = filename
-    @extension = extension
-    FileUtils.mkpath(directory)
+  def initialize(dir_path, filename='', extension='')
+    @factory = FileFactory::TimeStampedFileFactory.new(dir_path, filename, extension)
   end
   
   def write(output)
-    time_string = Time.now.strftime '%Y%m%d%H%M%S%L'
-    output_name = time_string
-    output_name += "-#{@filename}" if !@filename.empty?
-    output_name += ".#{@extension}" if !@extension.empty?
-    File.open(File.join(@directory, output_name), 'w') do |f|
+    output_path = @factory.next_filepath
+    File.open(output_path, 'w') do |f|
       f.write output
     end
-    return output_name
+    output_path
   end
 end
