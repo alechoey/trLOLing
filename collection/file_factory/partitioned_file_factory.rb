@@ -2,7 +2,7 @@ require 'fileutils'
 require_relative './file_factory'
 
 module FileFactory
-  class PartitonedFileFactory < FileFactory       
+  class PartitionedFileFactory < FileFactory       
     def initialize(dir_path, filename, file_extension='')
       @dir = dir_path
       @filename = filename

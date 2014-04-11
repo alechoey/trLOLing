@@ -1,10 +1,13 @@
 require 'rubygems'
+require 'bloomfilter-rb'
 require 'nokogiri'
 require_relative './data_collector'
 require_relative './file_factory/time_stamped_file_factory'
 require_relative './file_factory/partitioned_file_factory'
+require_relative './util/csv_utilities'
 
 class RecentGamesProcessor
+  SUMMONER_IDS_PER_FILE = 10000
   @region_codes = {
     'North America' => 'na',
     'Europe West' => 'euw',
@@ -17,12 +20,16 @@ class RecentGamesProcessor
   
   def initialize
     @data_path = File.expand_path('../../data/raw/recent_games', __FILE__)
-    @index_path = File.expand_path('../../data/processed/recent_games/recent_games_index*', __FILE__)
-    @output_path = File.expand_path('../../data/processed/summoner_ids', __FILE__)
+    @raw_output_path = File.expand_path('../../data/raw/summoner_ids', __FILE__)
+    @processed_output_path = File.expand_path('../../data/processed/summoner_ids', __FILE__)
+    @bf_path = File.expand_path('../../data/processed/summoner_ids/summoners_seen', __FILE__)
     
     @data_collector = DataCollector.new
     @input_factory = FileFactory::TimeStampedFileFactory.new(@data_path, 'recent_games', 'html')
-    @output_factory = FileFactory::PartitonedFileFactory.new(@output_path, 'summoner_ids', 'json')
+    @raw_output_factory = FileFactory::PartitionedFileFactory.new(@raw_output_path, 'summoner_ids', 'json')
+    @processed_output_factory = FileFactory::PartitionedFileFactory.new(@processed_output_path, 'summoner_ids', 'csv')
+    
+    @processed_output_headers = ['id', 'name', 'profileIconId', 'summonerLevel', 'revisionDate']
   end
 
   def process
@@ -37,13 +44,64 @@ class RecentGamesProcessor
           
           next if summoner_names.empty?
           path = "/api/lol/#{region_code}/v1.4/summoner/by-name/#{URI.escape summoner_names.join(',')}"
-          output_filepath = @output_factory.next_filepath
+          output_filepath = @raw_output_factory.next_filepath
           @data_collector.execute path, output_filepath
           
           puts "Wrote game summoner IDs to #{output_filepath}"
         end
       end
+      
+      File.delete data_filepath
+      puts "Removed recent games file #{data_filepath}"
     end
+    
+    if File.exists? @bf_path
+      puts "Loading summoners seen bloom filter from file #{@bf_path}"
+      summoners_seen = BloomFilter::Native.load @bf_path
+    else
+      summoners_seen = BloomFilter::Native.new(
+          :size => 12000000,
+          :hashes => 12,
+          :seed => 1,
+          :bucket => 3,
+          :raise => false)
+      puts 'Initializing new summoners seen bloom filter'
+    end
+
+    num_headers = @processed_output_headers.count
+    processed_values = []
+    @raw_output_factory.each do |raw_summoner_filepath|
+      File.open(raw_summoner_filepath, 'r') do |f|
+        raw_summoners = JSON.parse f.read
+        raw_summoners.each do |summoner_name, summoner_values|
+          values = @processed_output_headers.map { |key| summoner_values[key] }
+          next if values.count { |val| !val.nil? } < num_headers
+          next if summoners_seen.include? summoner_name
+          
+          processed_values << values
+          summoners_seen.insert summoner_name
+        end
+      end
+      
+      File.delete raw_summoner_filepath
+      puts "Removed raw summoner ID file #{raw_summoner_filepath}"
+      
+      if processed_values.count > SUMMONER_IDS_PER_FILE
+        values_to_write = processed_values.slice! 0, SUMMONER_IDS_PER_FILE
+        processed_filepath = @processed_output_factory.next_filepath
+        CSV.write processed_filepath, values_to_write, @processed_output_headers
+        puts "Wrote #{SUMMONER_IDS_PER_FILE} summoner IDs to file #{processed_filepath}"
+      end
+    end
+    
+    unless processed_values.empty?
+      processed_filepath = @processed_output_factory.next_filepath
+      CSV.write processed_filepath, processed_values, @processed_output_headers
+      puts "Wrote remaining summoner IDS to file #{processed_filepath}"
+    end
+        
+    summoners_seen.save @bf_path
+    puts "Saved summoners seen filter to #{@bf_path}"
   end
   
   def self.get_region_code(region_text)
