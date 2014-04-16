@@ -31,11 +31,46 @@ class RecentGamesProcessor
     
     @processed_output_headers = ['id', 'name', 'profileIconId', 'summonerLevel', 'revisionDate']
   end
+  
+  def self.get_region_code(region_text)
+    @region_codes[region_text]
+  end
+  
+  def load_or_build_summoners_seen_filter
+    if File.exists? @bf_path
+      begin
+        print "Loading summoners seen bloom filter from file #{@bf_path}..."
+        summoners_seen = BloomFilter::Native.load @bf_path
+        puts 'SUCCESS'
+        return summoners_seen
+      rescue
+        puts 'FAILED'
+      end
+    end
+
+    summoners_seen = BloomFilter::Native.new(
+        :size => 420000,
+        :hashes => 11,
+        :seed => 1,
+        :bucket => 3,
+        :raise => false)
+    
+    
+    puts 'Initialized new summoners seen bloom filter'
+    print 'Rebuilding summoners seen bloom filter from processed summoner IDs...'
+    @processed_output_factory.each do |summoner_csv|
+      CSV.foreach summoner_csv, :headers => true do |row|
+        summoners_seen.insert row['name'].downcase.gsub(/\s/,'')
+      end
+    end
+    puts 'DONE'
+    summoners_seen
+  end
 
   def process
     @input_factory.each do |data_filepath|
       File.open(data_filepath, 'r') do |f|
-        puts "Read recent games file #{data_filepath}..."
+        puts "Read recent games file #{data_filepath}"
         document = Nokogiri::HTML(f)
         document.search('div[@class=recent-game]').each do |game_html|
           region_code = RecentGamesProcessor.get_region_code(game_html.search('small').text)
@@ -55,19 +90,8 @@ class RecentGamesProcessor
       puts "Removed recent games file #{data_filepath}"
     end
     
-    if File.exists? @bf_path
-      puts "Loading summoners seen bloom filter from file #{@bf_path}"
-      summoners_seen = BloomFilter::Native.load @bf_path
-    else
-      summoners_seen = BloomFilter::Native.new(
-          :size => 12000000,
-          :hashes => 12,
-          :seed => 1,
-          :bucket => 3,
-          :raise => false)
-      puts 'Initializing new summoners seen bloom filter'
-    end
-
+    @summoners_seen = load_or_build_summoners_seen_filter
+        
     num_headers = @processed_output_headers.count
     processed_values = []
     @raw_output_factory.each do |raw_summoner_filepath|
@@ -76,10 +100,10 @@ class RecentGamesProcessor
         raw_summoners.each do |summoner_name, summoner_values|
           values = @processed_output_headers.map { |key| summoner_values[key] }
           next if values.count { |val| !val.nil? } < num_headers
-          next if summoners_seen.include? summoner_name
+          next if @summoners_seen.include? summoner_name
           
           processed_values << values
-          summoners_seen.insert summoner_name
+          @summoners_seen.insert summoner_name
         end
       end
       
@@ -99,12 +123,10 @@ class RecentGamesProcessor
       CSV.write processed_filepath, processed_values, @processed_output_headers
       puts "Wrote remaining summoner IDS to file #{processed_filepath}"
     end
-        
-    summoners_seen.save @bf_path
+    
+    File.delete @bf_path
+    @summoners_seen.save @bf_path
+    @summoners_seen.stats
     puts "Saved summoners seen filter to #{@bf_path}"
-  end
-  
-  def self.get_region_code(region_text)
-    @region_codes[region_text]
   end
 end
