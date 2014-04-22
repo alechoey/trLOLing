@@ -1,5 +1,5 @@
 require 'rubygems'
-require 'bloomfilter-rb'
+require 'bloom-filter'
 require 'nokogiri'
 require_relative './data_collector'
 require_relative './file_factory/time_stamped_file_factory'
@@ -22,7 +22,7 @@ class RecentGamesProcessor
     @data_path = File.expand_path('../../data/raw/recent_games', __FILE__)
     @raw_output_path = File.expand_path('../../data/raw/summoner_ids', __FILE__)
     @processed_output_path = File.expand_path('../../data/processed/summoner_ids', __FILE__)
-    @bf_path = File.expand_path('../../data/processed/summoner_ids/summoners_seen', __FILE__)
+    @bf_path = File.expand_path('../../data/processed/summoner_ids/summoners_seen.bloom', __FILE__)
     
     @data_collector = DataCollector.new
     @input_factory = FileFactory::TimeStampedFileFactory.new(@data_path, 'recent_games', 'html')
@@ -40,7 +40,7 @@ class RecentGamesProcessor
     if File.exists? @bf_path
       begin
         print "Loading summoners seen bloom filter from file #{@bf_path}..."
-        summoners_seen = BloomFilter::Native.load @bf_path
+        summoners_seen = BloomFilter.load @bf_path
         puts 'SUCCESS'
         return summoners_seen
       rescue
@@ -48,13 +48,9 @@ class RecentGamesProcessor
       end
     end
 
-    summoners_seen = BloomFilter::Native.new(
-        :size => 420000,
-        :hashes => 11,
-        :seed => 1,
-        :bucket => 3,
-        :raise => false)
-    
+    summoners_seen = BloomFilter.new(
+        :size => 32_000_000,
+        :error_rate => 0.01)
     
     puts 'Initialized new summoners seen bloom filter'
     print 'Rebuilding summoners seen bloom filter from processed summoner IDs...'
@@ -124,9 +120,7 @@ class RecentGamesProcessor
       puts "Wrote remaining summoner IDS to file #{processed_filepath}"
     end
     
-    File.delete @bf_path
-    @summoners_seen.save @bf_path
-    @summoners_seen.stats
+    @summoners_seen.dump @bf_path
     puts "Saved summoners seen filter to #{@bf_path}"
   end
 end
