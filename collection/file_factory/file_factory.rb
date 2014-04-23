@@ -6,7 +6,7 @@ module FileFactory
       raise NotImplementedError, 'FileFactory is an abstract type and must be extended'
     end
     
-    def next_filepath
+    def next_filepath(dir_path='')
       File.join(@dir, next_filename)
     end
   end
