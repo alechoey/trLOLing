@@ -39,8 +39,12 @@ class DataCollector
   def write_request_body(output_path=nil)
     return unless output_path
     File.open(output_path, 'wb') do |f|
-      json = JSON.parse! @data.body_str
-      f.write JSON.pretty_generate json
+      begin
+        json = JSON.parse @data.body_str
+        f.write JSON.pretty_generate json
+      rescue
+        puts "Was unable to parse and write JSON to file #{output_path}"
+      end
     end
   end
 end
