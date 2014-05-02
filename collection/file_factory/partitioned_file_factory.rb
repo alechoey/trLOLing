@@ -15,7 +15,7 @@ module FileFactory
       @partition_number = (max_partition_number || -1) + 1
     end
     
-    def each
+    def each(prepended=false)
       filename_pattern = "#{@filename}-[0-9]*#{@file_extension}"
       Dir.foreach @dir do |partition_filename|
         next unless File.fnmatch? filename_pattern, partition_filename
@@ -29,8 +29,9 @@ module FileFactory
       $1.to_i
     end
     
-    def next_filename
+    def next_filename(filename_prepend='')
       filename = "#{@filename}-#{@partition_number}"
+      filename = "#{filename_prepend}_#{filename}" unless filename_prepend.empty?
       filename += ".#{@file_extension}" unless @file_extension.empty?
       @partition_number += 1
       return filename

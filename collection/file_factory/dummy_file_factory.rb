@@ -10,12 +10,16 @@ module FileFactory
       FileUtils.mkpath(dir_path)
     end
     
-    def each
-      yield File.join @dir, @filename
+    def each(prepended=false)
+      filename = @filename
+      filename += ".#{@file_extension}" unless @file_extension.empty?
+      filename = "*#{filename}" if prepended
+      Dir.glob(File.join(@dir, filename)) { |f| yield f }
     end
     
-    def next_filename
+    def next_filename(filename_prepend='')
       filename = @filename
+      filename = "#{filename_prepend}_#{filename}" unless filename_prepend.empty?
       filename += ".#{@file_extension}" unless @file_extension.empty?
       return filename
     end

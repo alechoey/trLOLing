@@ -10,7 +10,7 @@ module FileFactory
       FileUtils.mkpath(dir_path)
     end
     
-    def each
+    def each(prepended=false)
       filename_pattern = "*#{@filename}*#{@file_extension}"
       Dir.foreach @dir do |filename|
         next unless File.fnmatch? filename_pattern, filename
@@ -18,9 +18,10 @@ module FileFactory
       end
     end
     
-    def next_filename
+    def next_filename(filename_prepend='')
       time_string = Time.now.strftime '%Y%m%d%H%M%S%L'
       output_name = time_string
+      output_name = "#{filename_prepend}_#{output_name}" unless filename_prepend.empty?
       output_name += "-#{@filename}" if !@filename.empty?
       output_name += ".#{@file_extension}" if !@file_extension.empty?
       output_name

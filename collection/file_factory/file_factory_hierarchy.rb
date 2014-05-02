@@ -34,19 +34,19 @@ module FileFactory
       find_or_create_current_file_factory
     end
     
-    def each
+    def each(prepended=false)
       @file_factories.each do |dir, file_factory|
-        file_factory.each { |file| yield Pathname.new(dir).relative_path_from(@root_dir).to_s, file }
+        file_factory.each(prepended) { |file| yield Pathname.new(dir).relative_path_from(@root_dir).to_s, file }
       end
     end
 
     def_delegator :@current_file_factory, :next_filename
     
-    def next_filepath(dir_path='')
+    def next_filepath(dir_path='', filename_prepend='')
       super if dir_path.empty?
       tmp_curr = @current_file_factory
       to_dir dir_path
-      filename = next_filename
+      filename = next_filename filename_prepend
       @current_file_factory = tmp_curr
       File.join @root_dir, dir_path, filename
     end    
