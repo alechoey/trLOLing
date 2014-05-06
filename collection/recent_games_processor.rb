@@ -17,11 +17,11 @@ class RecentGamesProcessor
     'Oceania' => 'oce',
   }
   
-  def initialize
+  def initialize(api_key=ENV['LOL_API_KEY'])
     @data_path = File.expand_path('../../data/raw/recent_games', __FILE__)
     @raw_output_path = File.expand_path('../../data/raw/summoner_ids', __FILE__)
     
-    @api = LolApi.new
+    @api = LolApi.new api_key
     @input_factory = FileFactory::TimeStampedFileFactory.new(@data_path, 'recent_games', 'html')
     @raw_output_factory = FileFactory::FileFactoryHierarchy.new(FileFactory::PartitionedFileFactory, @raw_output_path, 'summoner_ids', 'json')
   end
@@ -37,17 +37,7 @@ class RecentGamesProcessor
   def self.get_region_code(region_text)
     @region_codes[region_text]
   end
-  
-  def fetch_summoners(summoner_names=[], region_code='na')
-    return if summoner_names.empty?
-    path = "/api/lol/#{region_code}/v1.4/summoner/by-name/#{URI.escape summoner_names.join(',')}"
     
-    output_filepath = @raw_output_factory.next_filepath region_code
-    @data_collector.execute path, output_filepath
-    
-    puts "Wrote game summoner IDs to #{output_filepath}"
-  end
-  
   def process
     @input_factory.each do |data_filepath|
       File.open(data_filepath, 'r') do |f|
