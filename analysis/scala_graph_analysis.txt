@@ -5,7 +5,7 @@ val edgeGraph = GraphLoader.edgeListFile(sc, s"${data_path}/championEdges.txt")
 val verts = sc.textFile(s"${data_path}/championVertices.txt").map {l =>
   val lineSplits = l.split("\\s+")
   val id = lineSplits(0).trim.toLong
-  val data = lineSplits.slice(1, lineSplits.length).mkString(", ")
+  val data = lineSplits.slice(1, lineSplits.length).mkString(" ")
   (id, data)
 }
 val graph = edgeGraph.outerJoinVertices(verts)({ (vid, _, vinfo) => vinfo.getOrElse("xxxx")}).cache
@@ -15,3 +15,6 @@ outDegrees.reduce{(id, indg) => indg>1}.foreach(println(_))
 // look at losing teams
 val inDegrees: VertexRDD[Int] = graph.inDegrees
 inDegrees.reduce{(id, indg) => indg>1}.foreach(println(_))
+// find max
+graph.inDegrees.reduce{(a, b) => if (a._2>b._2) a else b}
+graph.outDegrees.reduce{(a, b) => if (a._2>b._2) a else b}
