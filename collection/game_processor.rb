@@ -9,7 +9,7 @@ require_relative './summoners_seen_filter'
 
 class GameProcessor
   include LolConstants
-  def initialize(api_key=ENV['LOL_API_KEY'], regions=region_codes.values)
+  def initialize(api_keys=[ENV['LOL_API_KEY']], regions=region_codes.values)
     @input_path = File.expand_path('../../data/raw/games', __FILE__)
     @incomplete_output_path = File.expand_path('../../data/processed/games/incomplete', __FILE__)
     @complete_output_path = File.expand_path('../../data/processed/games/complete', __FILE__)
@@ -20,7 +20,7 @@ class GameProcessor
     @complete_output_factory = FileFactory::FileFactoryHierarchy.new(FileFactory::PrependedDummyFileFactory, @complete_output_path, 'game', 'json')
     @raw_summoner_ids_factory = FileFactory::FileFactoryHierarchy.new(FileFactory::PartitionedFileFactory, @raw_summoner_ids_path, 'summoner_ids', 'json')
     
-    @api = LolApi.new api_key
+    @api = LolApi.new api_keys
     @regions = regions
     @summoners_seen = SummonersSeenFilter.new
   end
@@ -49,7 +49,7 @@ class GameProcessor
               File.open(game_output_path, 'r') do |out_file|
                 merge_json = JSON.parse(out_file.read)
                 game_json.merge! merge_json
-                game_json['summonerCount'] = game_json.reject { |k,v| k == 'summonerCount' }.count
+                game_json['summonerCount'] = game_json.reject { |k,v| k == 'summonerCount' }.keys.uniq.count
               end
             end
           
@@ -84,6 +84,7 @@ class GameProcessor
       @incomplete_output_factory.get_or_create_factory(region_code).each do |incomplete_filepath|
         File.open incomplete_filepath, 'r' do |in_file|
           json = JSON.parse(in_file.read)
+          next unless json['summonerCount'] > 1
           summoner_objects = json.select { |k,v| k =~ /[0-9]+/ }.values.first['fellowPlayers']
           next if summoner_objects.nil?
           new_summoner_ids = summoner_objects.map { |summoner| summoner['summonerId'] }.reject { |summoner_id| @summoners_seen.include? region_code, summoner_id }

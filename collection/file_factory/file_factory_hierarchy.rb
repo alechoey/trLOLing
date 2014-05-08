@@ -44,6 +44,7 @@ module FileFactory
     
     def next_filepath(dir_path='', *args)
       super if dir_path.empty?
+      to_dir(dir_path)
       filename = next_filename *args
       File.join @root_dir, dir_path, filename
     end    

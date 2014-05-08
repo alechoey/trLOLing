@@ -8,12 +8,12 @@ require_relative './lol_constants'
 class GameScraper
   include LolConstants
   
-  def initialize(api_key=ENV['LOL_API_KEY'], regions=region_codes.values)
+  def initialize(api_keys=[ENV['LOL_API_KEY']], regions=region_codes.values)
     @regions = regions
     @input_path = File.expand_path('../../data/processed/summoner_ids', __FILE__)
     @output_path = File.expand_path('../../data/raw/games', __FILE__)
     
-    @data_collector = DataCollector.new api_key
+    @data_collector = DataCollector.new api_keys
     @input_factory = FileFactory::FileFactoryHierarchy.new(FileFactory::PartitionedFileFactory, @input_path, 'summoner_ids', 'csv')
     @output_factory = FileFactory::FileFactoryHierarchy.new(FileFactory::TimeStampedFileFactory, @output_path, 'games', 'json')
   end

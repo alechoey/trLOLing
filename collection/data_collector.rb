@@ -8,15 +8,16 @@ class DataCollector
   API_HOSTNAME = 'https://prod.api.pvp.net'
   TIME_INTERVAL = 1.5
   
-  def initialize(api_key=ENV['LOL_API_KEY'])
-    @api_key = api_key
+  def initialize(api_keys=[ENV['LOL_API_KEY']])
+    @api_keys = api_keys
     @last_request_at = nil
   end
     
   def execute(path, output_path=nil, path_args={})
     request_url = URI.join URI(API_HOSTNAME), path
 
-    www_path_args = URI.encode_www_form path_args.merge(:api_key => @api_key)
+    www_path_args = URI.encode_www_form path_args.merge(:api_key => @api_keys.first)
+    @api_keys.rotate!
     request_url.query = www_path_args
     
     send_request request_url
@@ -30,7 +31,7 @@ class DataCollector
   def send_request(request_url)
     unless @last_request_at.nil?
       time_difference = Time.now - @last_request_at
-      sleep TIME_INTERVAL if time_difference < TIME_INTERVAL
+      sleep TIME_INTERVAL / @api_keys.count if time_difference < TIME_INTERVAL / @api_keys.count
     end
     @data = Curl::Easy.perform(request_url.to_s)
     @last_request_at = Time.now

@@ -1,8 +1,8 @@
 require_relative './data_collector'
 
 class LolApi
-  def initialize(api_key=ENV['LOL_API_KEY'])
-    @data_collector = DataCollector.new api_key
+  def initialize(api_keys=[ENV['LOL_API_KEY']])
+    @data_collector = DataCollector.new api_keys
   end
   
   def get_summoner_ids_by_name(summoner_names=[], region_code='na', output_filepath='')
