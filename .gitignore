@@ -3,3 +3,7 @@
 
 # Ignore processed data for now too
 /data/processed
+
+**/.ipynb_checkpoints
+
+**/.DS_Store
