@@ -1,20 +1,94 @@
+// this code is to analyze graph with weights computed from data
+
 import org.apache.spark.graphx._
 import org.apache.spark.graphx.lib._
+import org.apache.spark.rdd.RDD
+
 val data_path = "/home/saasbook/trLOLing"
-val edgeGraph = GraphLoader.edgeListFile(sc, s"${data_path}/championEdges.txt")
-val verts = sc.textFile(s"${data_path}/championVertices.txt").map {l =>
+// read in the vertices and make vertex objects
+val verts = sc.textFile(s"${data_path}/graphXChampionVertices.txt").map {l =>
   val lineSplits = l.split("\\s+")
   val id = lineSplits(0).trim.toLong
   val data = lineSplits.slice(1, lineSplits.length).mkString(" ")
   (id, data)
 }
-val graph = edgeGraph.outerJoinVertices(verts)({ (vid, _, vinfo) => vinfo.getOrElse("xxxx")}).cache
+// read in the edges to make edge objects
+val edge_lines = scala.io.Source.fromFile(s"${data_path}/graphXChampionEdges.txt").mkString.split('\n')
+val buf = scala.collection.mutable.ArrayBuffer.empty[Edge[Int]]
+edge_lines.foreach{(edge) => 
+  val edge_info = edge.split(' ')
+  buf+=Edge(edge_info(0).trim.toLong, edge_info(1).trim.toLong, edge_info(2).toInt)}
+val edgeArray = buf.toArray
+val edgeRDD: RDD[Edge[Int]] = sc.parallelize(edgeArray)
+// finally make the graph object
+val graph: Graph[String, Int] = Graph(verts, edgeRDD)
+// look at triplets to calculate the in degree weight and outdegree weight
+val vertice_values:collection.mutable.Map[Long, Double] = collection.mutable.Map()
+for (tripl <- graph.triplets) {
+  val src = tripl.srcId
+  val dst = tripl.dstId
+  val value = tripl.attr
+  if (vertice_values contains src) {
+    vertice_values(src) += value
+  }
+  else {
+    vertice_values.put(src, value)
+  }
+  if (vertice_values contains dst) {
+    vertice_values(dst) -= value
+  }
+  else {
+    vertice_values.put(dst, value*(-1))
+  }
+}
+println(vertice_values.size)
+
+/////////////////////////////////////////////////
+
+
+
+// This code is to analyze graph with only win ratios
+import org.apache.spark.graphx._
+import org.apache.spark.graphx.lib._
+import org.apache.spark.rdd.RDD
+
+val data_path = "/home/saasbook/trLOLing/data/final/graphX/incomplete"
+// read in the vertices and make vertex objects
+val verts = sc.textFile(s"${data_path}/graphXChampionVertices.txt").map {l =>
+  val lineSplits = l.split("\\s+")
+  val id = lineSplits(0).trim.toLong
+  val data = lineSplits.slice(1, lineSplits.length).mkString(" ")
+  (id, data)
+}
+
+val edgeGraph = GraphLoader.edgeListFile(sc, s"${data_path}/graphXChampionEdges.txt")
+val graph = edgeGraph.outerJoinVertices(verts)({ (vid, _, vinfo) => vinfo.getOrElse("xxxx")})
 val outDegrees: VertexRDD[Int] = graph.outDegrees
 // outDegree means won
-outDegrees.reduce{(id, indg) => indg>1}.foreach(println(_))
+// outDegrees.filter{case (id, indg) => indg>1}.foreach(println(_))
 // look at losing teams
 val inDegrees: VertexRDD[Int] = graph.inDegrees
-inDegrees.reduce{(id, indg) => indg>1}.foreach(println(_))
+// inDegrees.filter{case (id, indg) => indg>1}.foreach(println(_))
 // find max
-graph.inDegrees.reduce{(a, b) => if (a._2>b._2) a else b}
-graph.outDegrees.reduce{(a, b) => if (a._2>b._2) a else b}
+//graph.inDegrees.reduce{(a, b) => if (a._2>b._2) a else b}
+//graph.outDegrees.reduce{(a, b) => if (a._2>b._2) a else b}
+
+// make degree graph
+case class TeamComp(name: String, inDeg: Int, outDeg: Int)
+
+// Transform the graph
+val userGraph = graph.mapVertices{ case (id, name) => TeamComp(name, 0, 0) }
+
+// Fill in the degree information
+val degreeGraph = userGraph.outerJoinVertices(userGraph.inDegrees) {
+  (id, u, inDegOpt) => TeamComp(u.name, inDegOpt.getOrElse(0), u.outDeg)
+}.outerJoinVertices(graph.outDegrees) {
+  (id, u, outDegOpt) => TeamComp(u.name, u.inDeg, outDegOpt.getOrElse(0))
+}
+// filter out all the edges with all degree 1
+val filtered_edges = degreeGraph.triplets.filter{case triplet => 
+    triplet.dstAttr.inDeg > 4 || triplet.dstAttr.outDeg > 4 || triplet.srcAttr.inDeg > 4 || triplet.srcAttr.outDeg > 4}
+//val buf = scala.collection.mutable.ArrayBuffer.empty[() => Edge[Int]]
+val edgesArray = filtered_edges.map{ t =>  Edge(t.srcId, t.dstId, 1)}
+val edgeRDD2: RDD[Edge[Int]] = sc.parallelize(edgesArray.toArray)
+edgeRDD2.saveAsTextFile(s"${data_path}/filteredChampionEdges.csv")
