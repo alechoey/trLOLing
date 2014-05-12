@@ -1,10 +1,10 @@
-// this code is to analyze graph with weights computed from data
+// this code is to analyze graph with weights computed from data if weight is provided
 
 import org.apache.spark.graphx._
 import org.apache.spark.graphx.lib._
 import org.apache.spark.rdd.RDD
 
-val data_path = "/home/saasbook/trLOLing"
+val data_path = "/home/saasbook/trLOLing/data/final/graphX/complete"
 // read in the vertices and make vertex objects
 val verts = sc.textFile(s"${data_path}/graphXChampionVertices.txt").map {l =>
   val lineSplits = l.split("\\s+")
@@ -24,10 +24,14 @@ val edgeRDD: RDD[Edge[Int]] = sc.parallelize(edgeArray)
 val graph: Graph[String, Int] = Graph(verts, edgeRDD)
 // look at triplets to calculate the in degree weight and outdegree weight
 val vertice_values:collection.mutable.Map[Long, Double] = collection.mutable.Map()
-for (tripl <- graph.triplets) {
-  val src = tripl.srcId
-  val dst = tripl.dstId
-  val value = tripl.attr
+var src = 0L
+var dst = 0L
+var value = 0L
+val weight_edge_mapping = graph.triplets.map{t => Array(t.srcId, t.dstId, t.attr)}.toArray
+weight_edge_mapping.foreach{(edge) =>
+  src = edge(0)
+  dst = edge(1)
+  value = edge(2)
   if (vertice_values contains src) {
     vertice_values(src) += value
   }
@@ -41,7 +45,40 @@ for (tripl <- graph.triplets) {
     vertice_values.put(dst, value*(-1))
   }
 }
-println(vertice_values.size)
+
+// compute average using degree information
+val average_values:collection.mutable.Map[Long, Double] = collection.mutable.Map()
+
+graph.degrees.toArray.foreach{case (id, deg) =>
+  average_values.put(id, vertice_values(id)/(deg*1.0))
+}
+
+// filter out all the edges with degree 1
+
+
+// make degree graph
+case class TeamComp(name: String, inDeg: Int, outDeg: Int)
+
+// Transform the graph
+val userGraph = graph.mapVertices{ case (id, name) => TeamComp(name, 0, 0) }
+
+// Fill in the degree information
+val degreeGraph = userGraph.outerJoinVertices(userGraph.inDegrees) {
+  (id, u, inDegOpt) => TeamComp(u.name, inDegOpt.getOrElse(0), u.outDeg)
+}.outerJoinVertices(graph.outDegrees) {
+  (id, u, outDegOpt) => TeamComp(u.name, u.inDeg, outDegOpt.getOrElse(0))
+}
+// filter out all the edges with all degree 4
+val filtered_edges = degreeGraph.triplets.filter{case triplet => 
+    triplet.dstAttr.inDeg > 1 || triplet.dstAttr.outDeg > 1 || triplet.srcAttr.inDeg > 1 || triplet.srcAttr.outDeg > 1}
+val filter_edgeRDD = filtered_edges.map{ t =>  Edge(t.srcId, t.dstId, 1)}
+filter_edgeRDD.saveAsTextFile(s"${data_path}/filteredAveragedChampionEdges")
+val filter_vertRDD = degreeGraph.mapVertices{case (id, tc)=> (average_values(id), tc.inDeg, tc.outDeg)}.vertices.filter{case (id, (label, ind, outd)) => ind+outd > 1}.map{case (id, (label, ind, outd)) => (id, label)}
+// incorporate average values to verts
+val averaged_verts = verts.map{case (id, name) => 
+  (id,average_values(id))}
+averaged_verts.saveAsTextFile(s"${data_path}/averagedChampionVertices")
+filter_edgeRDD.saveAsTextFile(s"${data_path}/unweightedChampionEdges")
 
 /////////////////////////////////////////////////
 
@@ -85,10 +122,10 @@ val degreeGraph = userGraph.outerJoinVertices(userGraph.inDegrees) {
 }.outerJoinVertices(graph.outDegrees) {
   (id, u, outDegOpt) => TeamComp(u.name, u.inDeg, outDegOpt.getOrElse(0))
 }
-// filter out all the edges with all degree 1
+// filter out all the edges with all degree 4
 val filtered_edges = degreeGraph.triplets.filter{case triplet => 
     triplet.dstAttr.inDeg > 4 || triplet.dstAttr.outDeg > 4 || triplet.srcAttr.inDeg > 4 || triplet.srcAttr.outDeg > 4}
-//val buf = scala.collection.mutable.ArrayBuffer.empty[() => Edge[Int]]
 val edgesArray = filtered_edges.map{ t =>  Edge(t.srcId, t.dstId, 1)}
-val edgeRDD2: RDD[Edge[Int]] = sc.parallelize(edgesArray.toArray)
-edgeRDD2.saveAsTextFile(s"${data_path}/filteredChampionEdges.csv")
+edgeRDD.map{case (src, dst,weight) => (src, dst, 1)}.saveAsTextFile(s"${data_path}/filteredChampionEdges.csv")
+
+// get the win rates
