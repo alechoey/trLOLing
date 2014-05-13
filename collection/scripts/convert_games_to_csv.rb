@@ -105,8 +105,9 @@ def process_file(region_code, data_filepath, complete=true)
     end
     
     summoners = game_json.reject { |key, value| key == 'summonerCount' }.values
+    summoner = summoners.first
+    return unless summoner['gameMode'] == 'CLASSIC'
     unless complete
-      summoner = summoners.first
       return if summoner.nil?
       summoners = summoner['fellowPlayers']
       return if summoners.nil?
